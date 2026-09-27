@@ -55,6 +55,8 @@ func (s *Server) Register(r *gin.Engine) {
 	r.POST("/bots/:name/toggle", s.handleBotToggle)
 	r.POST("/bots/:name/delete", s.handleBotDelete)
 	r.POST("/bots/:name/run", s.handleBotRun)
+	r.GET("/bots/:name/report", s.handleBotReport)
+	r.GET("/api/metrics/range", s.handleMetricsRange)
 	r.POST("/alerts/:id/ack", s.handleAlertAck)
 	r.GET("/alerts", s.handleAlerts)
 	r.POST("/alerts/config", s.handleAlertConfigSave)

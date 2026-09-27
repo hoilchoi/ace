@@ -43,6 +43,7 @@
 {{- else if eq .ContentTemplate "content_run_detail" -}}   {{ template "content_run_detail" . }}
 {{- else if eq .ContentTemplate "content_firewall" -}}     {{ template "content_firewall" . }}
 {{- else if eq .ContentTemplate "content_bots" -}}         {{ template "content_bots" . }}
+{{- else if eq .ContentTemplate "content_bot_report" -}}   {{ template "content_bot_report" . }}
 {{- else if eq .ContentTemplate "content_alerts" -}}       {{ template "content_alerts" . }}
 {{- end -}}
 </main>

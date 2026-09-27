@@ -18,6 +18,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/jchavanton/ace/config"
 	"github.com/jchavanton/ace/controller"
@@ -30,6 +31,12 @@ func main() {
 	r := gin.Default()
 	r.LoadHTMLGlob("templates/*.html")
 	r.Static("/static", "./static")
+
+	// /metrics is registered BEFORE srv.Register so it lives outside the
+	// basic-auth middleware — prometheus scrapes without creds. The
+	// scrape target is localhost from the sibling prometheus container
+	// (host networking), so there's no cross-network exposure risk.
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	runner := &controller.Runner{Cfg: cfg}
 	srv := &handlers.Server{

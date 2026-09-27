@@ -1,0 +1,17 @@
+# Prometheus config for the ace stack. Host-networked, so `localhost`
+# resolves to the shared host — ace listens on ACE_ADDR (default :8086)
+# on the same host, and we scrape /metrics there. 15s scrape interval
+# matches sip-proxy's setup and gives the /bots/:name/report panels
+# ~500 points across 24h without downsampling.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+  external_labels:
+    instance: ace
+
+scrape_configs:
+  - job_name: ace
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - localhost:8086

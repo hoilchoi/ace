@@ -122,4 +122,5 @@ CMD ["/bin/sh", "-c", "exec /usr/local/bin/ace \
     ${ACE_BASIC_AUTH_HTPASSWD:+-basic-auth-htpasswd ${ACE_BASIC_AUTH_HTPASSWD}} \
     ${ACE_TLS_CERT:+-tls-cert ${ACE_TLS_CERT}} \
     ${ACE_TLS_PRIVKEY:+-tls-privkey ${ACE_TLS_PRIVKEY}} \
-    ${ACE_TLS_CALIST:+-tls-calist ${ACE_TLS_CALIST}}"]
+    ${ACE_TLS_CALIST:+-tls-calist ${ACE_TLS_CALIST}} \
+    ${ACE_PROMETHEUS_URL:+-prometheus-url ${ACE_PROMETHEUS_URL}}"]

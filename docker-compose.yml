@@ -71,6 +71,10 @@ services:
       # recipients can click through to the run detail page. Empty = no
       # link in the email (run ID still shown as text).
       ACE_PUBLIC_BASE_URL: "${ACE_PUBLIC_BASE_URL:-}"
+      # Base URL of the prometheus sidecar (below). Empty disables the
+      # /bots/:name/report chart panels — /metrics itself still exports,
+      # so a downstream prometheus can scrape ace even without this set.
+      ACE_PROMETHEUS_URL: "${ACE_PROMETHEUS_URL:-http://localhost:9090}"
     volumes:
       - ./scenarios:/data/scenarios:rw
       - ./runs:/data/runs:rw
@@ -84,3 +88,25 @@ services:
       # loaded and applied at startup so the operator's allow-list
       # survives a `docker compose up -d` cycle.
       - ./firewall:/data/firewall:rw
+
+  # Prometheus scrapes ace on localhost (host networking) and stores
+  # 90d of samples in a named volume so a `docker compose down` keeps
+  # history. The /bots/:name/report page queries it via the ace
+  # backend at ACE_PROMETHEUS_URL — no browser-to-prometheus traffic,
+  # so the port doesn't need to be exposed off-host.
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ace-prometheus
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.listen-address=127.0.0.1:9090'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+volumes:
+  prometheus_data:

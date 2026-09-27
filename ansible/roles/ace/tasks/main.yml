@@ -277,6 +277,7 @@
     ACE_PUBLIC_ADDRESS: "{{ ace_public_address_effective }}"
     ACE_LOCAL_IPS: "{{ ace_local_ips_effective | default('') }}"
     ACE_BASIC_AUTH_HTPASSWD: "{{ '/data/auth/htpasswd' if ace_auth_enabled | default(false) else '' }}"
+    ACE_PROMETHEUS_URL: "{{ ace_prometheus_url | default('http://localhost:9090') }}"
   register: compose_up
   changed_when: >
     'Started' in compose_up.stderr or

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/jchavanton/ace/config"
+	"github.com/jchavanton/ace/metrics"
 	"github.com/jchavanton/ace/models"
 )
 
@@ -511,6 +512,10 @@ func (r *Runner) execute(ctx context.Context, cancel context.CancelFunc, run *mo
 	}
 
 	_ = run.Save(r.Cfg.RunsDir)
+	// Emit prometheus samples after Save so the on-disk record and the
+	// scrape agree on outcome, and so a Save failure doesn't leave a
+	// metric without a run to click through to on the report page.
+	metrics.Observe(run)
 
 	if r.OnFinish != nil {
 		r.OnFinish(run)

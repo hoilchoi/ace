@@ -127,6 +127,14 @@ type Config struct {
 	TLSCert    string
 	TLSPrivKey string
 	TLSCAList  string
+
+	// PrometheusURL is the base URL of the Prometheus instance the
+	// /bots/:name/report page queries via /api/metrics/range. Empty =
+	// the report page renders a "metrics disabled" placeholder instead
+	// of chart panels. Typical value inside the compose stack:
+	// "http://localhost:9090" (prometheus runs on host networking on
+	// the same host as ace).
+	PrometheusURL string
 }
 
 // FromFlags parses flags and validates the result. Exits with a clear
@@ -155,6 +163,7 @@ func FromFlags() *Config {
 	flag.StringVar(&c.TLSCert, "tls-cert", "", "TLS certificate file (pem) passed to voip_patrol --tls-cert; needs --tls-privkey to take effect")
 	flag.StringVar(&c.TLSPrivKey, "tls-privkey", "", "TLS private key file (pem) passed to voip_patrol --tls-privkey")
 	flag.StringVar(&c.TLSCAList, "tls-calist", "", "TLS CA list (pem) passed to voip_patrol --tls-calist; optional")
+	flag.StringVar(&c.PrometheusURL, "prometheus-url", "", "base URL of prometheus (e.g. http://localhost:9090) used by /bots/:name/report; empty disables the chart panels")
 	flag.Parse()
 
 	// Resolve to absolute paths so the gin handlers don't need to care

@@ -33,6 +33,7 @@
             {{ if and .Enabled (not .NextRunAt.IsZero) }}{{ .NextRunAt.Format "2006-01-02 15:04:05" }}{{ end }}
           </td>
           <td class="text-end">
+            <a href="/bots/{{ .Name }}/report" class="btn btn-sm btn-outline-info">Report</a>
             <form method="post" action="/bots/{{ .Name }}/run" class="d-inline">
               <button class="btn btn-sm btn-outline-primary">Run</button>
             </form>

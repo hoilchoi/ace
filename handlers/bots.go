@@ -239,3 +239,31 @@ func (s *Server) handleAlertAck(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/bots")
 }
 
+// handleBotReport renders /bots/:name/report. The template loads chart
+// panels from /api/metrics/range with started_by="bot:<name>", so a
+// missing bot still gets a 404 here even though the metrics endpoint
+// would happily return an empty series — surfacing the mistake early.
+func (s *Server) handleBotReport(c *gin.Context) {
+	name := sanitizeScenarioName(c.Param("name"))
+	if name == "" {
+		c.String(http.StatusBadRequest, "invalid name")
+		return
+	}
+	b, err := models.LoadBot(s.Cfg.BotsDir, name)
+	if err != nil {
+		c.String(http.StatusNotFound, "bot %q: %v", name, err)
+		return
+	}
+	s.render(c, http.StatusOK, gin.H{
+		"Title":           "Bot report — " + b.Name,
+		"Page":            "bots",
+		"ContentTemplate": "content_bot_report",
+		"Bot":             b,
+		// StartedBy matches the label value Runner.StartWithTrigger stamps
+		// on bot runs ("bot:<name>"). Passed as a plain string; the
+		// template's <script> block auto-quotes it into a JS literal.
+		"StartedBy":      "bot:" + b.Name,
+		"MetricsEnabled": s.Cfg.PrometheusURL != "",
+	})
+}
+
