@@ -129,7 +129,7 @@ func TestPromptsAndScenarioPagesRender(t *testing.T) {
 	upload(r, "ask.wav", pcm16WAV(500), nil)
 
 	for path, want := range map[string][]string{
-		"/prompts":         {"ask.wav", "500 ms", filepath.Join(dir, "prompts", "ask.wav")},
+		"/prompts":         {"ask.wav", "500 ms", filepath.Join(dir, "prompts", "ask.wav"), `"wav": "prompts/`},
 		"/scenarios/probe": {"Audio checks", `&#34;rx_speech_ms&#34;`, "expect"},
 	} {
 		w := httptest.NewRecorder()
