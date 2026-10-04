@@ -49,6 +49,17 @@ var (
 		Name: "ace_run_rtt_avg_ms_last",
 		Help: "Average RTT (ms) reported by the most recent finished run.",
 	}, []string{"scenario", "started_by"})
+
+	runAudioPassLast = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ace_run_audio_pass_last",
+		Help: "1 if the most recent finished run passed its audio checks, else 0.",
+	}, []string{"scenario", "started_by"})
+
+	// metric is bounded by audio.Metrics plus expect.<name>.* for each scenario's expect entries.
+	runAudioMetricLast = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ace_run_audio_metric_last",
+		Help: "Audio metric (ms or packets) measured on the most recent finished run.",
+	}, []string{"scenario", "started_by", "metric"})
 )
 
 // runResult collapses (Status, aggregate.Fail>0) into a single label so
@@ -118,5 +129,18 @@ func Observe(r *models.Run) {
 		runInvite200P95.WithLabelValues(scenario, sb).Observe(float64(r.Aggregate.Invite200P95))
 		runMOSRxLast.WithLabelValues(scenario, sb).Set(r.Aggregate.MOSAvgRx)
 		runRTTLast.WithLabelValues(scenario, sb).Set(float64(r.Aggregate.RTTAvgMs))
+	}
+
+	if r.Audio != nil {
+		pass := 0.0
+		if r.Audio.Passed {
+			pass = 1
+		}
+		runAudioPassLast.WithLabelValues(scenario, sb).Set(pass)
+		for name, v := range r.Audio.Metrics {
+			if v != nil {
+				runAudioMetricLast.WithLabelValues(scenario, sb, name).Set(*v)
+			}
+		}
 	}
 }

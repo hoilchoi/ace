@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/jchavanton/ace/audio"
 )
 
 // Run is one execution of a scenario. Persisted as a directory under
@@ -51,6 +53,9 @@ type Run struct {
 	// while the run is in progress.
 	Calls     []CallResult `json:"calls,omitempty"`
 	Aggregate Aggregate    `json:"aggregate,omitempty"`
+
+	// Audio is the verdict from the scenario's .checks.json, if it has one.
+	Audio *audio.Verdict `json:"audio,omitempty"`
 }
 
 // CallResult is one row out of voip_patrol's results.json. Field names

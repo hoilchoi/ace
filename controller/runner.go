@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jchavanton/ace/audio"
 	"github.com/jchavanton/ace/config"
 	"github.com/jchavanton/ace/metrics"
 	"github.com/jchavanton/ace/models"
@@ -510,6 +511,9 @@ func (r *Runner) execute(ctx context.Context, cancel context.CancelFunc, run *mo
 			run.Error = fmt.Sprintf("parse results: %v", parseErr)
 		}
 	}
+	if run.Status == "done" {
+		run.Audio = evaluateAudio(run.Dir(r.Cfg.RunsDir), scenario, calls)
+	}
 
 	_ = run.Save(r.Cfg.RunsDir)
 	// Emit prometheus samples after Save so the on-disk record and the
@@ -520,6 +524,30 @@ func (r *Runner) execute(ctx context.Context, cancel context.CancelFunc, run *mo
 	if r.OnFinish != nil {
 		r.OnFinish(run)
 	}
+}
+
+// evaluateAudio applies the scenario's .checks.json to the run's recording; nil when
+// the scenario has none.
+func evaluateAudio(runDir string, scn *models.Scenario, calls []models.CallResult) *audio.Verdict {
+	if scn.ChecksError != "" {
+		return &audio.Verdict{Error: scn.ChecksError, Checks: []audio.Check{}, Metrics: map[string]*float64{}}
+	}
+	if scn.Checks == nil {
+		return nil
+	}
+	var call audio.Call
+	for _, c := range calls {
+		if c.Action != "call" || (scn.Checks.CallLabel != "" && c.Label != scn.Checks.CallLabel) {
+			continue
+		}
+		call.CallID = c.CallID
+		for _, st := range c.RTPStats {
+			call.RxPackets += st.Rx.Pkt
+			call.HasRTP = true
+		}
+		break
+	}
+	return audio.Evaluate(runDir, filepath.Dir(scn.Path), scn.Checks, call)
 }
 
 // loadVoipPatrolResults reads voip_patrol's results.json. The file is

@@ -199,6 +199,9 @@ func (s *Scheduler) onRunFinish(run *models.Run) {
 		// operators notice missing coverage rather than a green tick.
 		failed = true
 		reason = "no calls in results"
+	case run.Audio != nil && !run.Audio.Passed:
+		failed = true
+		reason = "audio: " + run.Audio.Summary()
 	}
 
 	if b != nil {

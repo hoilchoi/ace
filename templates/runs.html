@@ -56,6 +56,7 @@
         {{ else if eq .Status "error" }}<span class="badge bg-danger">error</span>
         {{ else if eq .Status "stopped" }}<span class="badge bg-warning text-dark">stopped</span>
         {{ else }}<span class="badge bg-secondary">{{ .Status }}</span>{{ end }}
+        {{ if .Audio }}{{ if .Audio.Passed }}<span class="badge bg-success">audio ok</span>{{ else }}<span class="badge bg-danger">audio fail</span>{{ end }}{{ end }}
       </td>
       <td class="text-end">
         {{ if .Aggregate.Total }}

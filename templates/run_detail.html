@@ -63,6 +63,34 @@
 </div>
 {{ end }}
 
+{{ with .Audio }}
+<h2 class="h5">Audio checks
+  {{ if .Passed }}<span class="badge bg-success">pass</span>{{ else }}<span class="badge bg-danger">fail</span>{{ end }}
+</h2>
+{{ if .Error }}<div class="alert alert-danger small">{{ .Error }}</div>{{ end }}
+{{ if .Checks }}
+<table class="table table-sm small w-auto mb-4">
+  <thead><tr><th>Check</th><th>Value</th><th>Want</th><th></th></tr></thead>
+  <tbody>
+  {{ range .Checks }}
+  <tr>
+    <td><code>{{ .Name }}</code></td>
+    <td>{{ .ValueText }}</td>
+    <td class="text-muted">{{ .WantText }}</td>
+    <td>{{ if .Passed }}<span class="text-success">&#10003;</span>{{ else }}<span class="text-danger">&#10007;</span>{{ end }}</td>
+  </tr>
+  {{ end }}
+  </tbody>
+</table>
+{{ end }}
+{{ with .Report }}{{ if .Expect }}
+<ul class="list-unstyled small mb-4">
+  {{ range .Expect }}<li><code>expect "{{ .Name }}"</code>: {{ .Text }}</li>{{ end }}
+  <li class="text-muted">offset = position in the recording − position in the WAV: the round trip for an echo of your own prompt, the start time for an announcement.</li>
+</ul>
+{{ end }}{{ end }}
+{{ end }}
+
 {{ if .Calls }}
 <h2 class="h5">Calls</h2>
 <div class="table-responsive">

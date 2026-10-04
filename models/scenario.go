@@ -5,6 +5,7 @@
 package models
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/jchavanton/ace/audio"
 )
 
 // Scenario is a single voip_patrol XML scenario the controller can run.
@@ -38,6 +41,11 @@ type Scenario struct {
 	// "not saved — fall back to the runner's global defaults." The
 	// sidecar is opt-in: absent file = zero Ports.
 	Ports ScenarioPorts
+
+	// Checks is the optional `<name>.checks.json`: audio thresholds applied to
+	// each run's recording. ChecksError is set when that file exists but is invalid.
+	Checks      *audio.Config
+	ChecksError string
 }
 
 // ScenarioPorts is the on-disk shape of a scenario's saved per-run
@@ -91,6 +99,74 @@ func loadScenarioPorts(scenarioPath string) (ScenarioPorts, error) {
 		return ScenarioPorts{}, fmt.Errorf("parse %s: %w", p, err)
 	}
 	return out, nil
+}
+
+// loadScenarioChecks reads `<name>.checks.json`. A missing file is the normal
+// "no audio checks" case and returns nil, "".
+func loadScenarioChecks(scenarioPath string) (*audio.Config, string) {
+	p := strings.TrimSuffix(scenarioPath, ".xml") + ".checks.json"
+	b, err := os.ReadFile(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ""
+	}
+	if err != nil {
+		return nil, err.Error()
+	}
+	c, err := ParseScenarioChecks(b)
+	if err != nil {
+		return nil, fmt.Sprintf("%s: %v", filepath.Base(p), err)
+	}
+	return c, ""
+}
+
+// ParseScenarioChecks parses and validates a .checks.json body. Unknown keys are
+// rejected so a typo can't silently disable a check.
+func ParseScenarioChecks(b []byte) (*audio.Config, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	var c audio.Config
+	if err := dec.Decode(&c); err != nil {
+		return nil, err
+	}
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// ReadScenarioChecks returns the raw .checks.json for the editor; "" when absent.
+func ReadScenarioChecks(dir, name string) string {
+	b, _ := os.ReadFile(filepath.Join(dir, name+".checks.json"))
+	return string(b)
+}
+
+// SaveScenarioChecks writes the operator's .checks.json text as-is, atomically.
+func SaveScenarioChecks(dir, name, body string) error {
+	tmp, err := os.CreateTemp(dir, "."+name+".checks.*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(strings.TrimSpace(body) + "\n"); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	// CreateTemp makes 0600; match the scenario XML so the host can read it.
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), filepath.Join(dir, name+".checks.json"))
+}
+
+// DeleteScenarioChecks removes the .checks.json. ENOENT is not an error.
+func DeleteScenarioChecks(dir, name string) error {
+	if err := os.Remove(filepath.Join(dir, name+".checks.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // SaveScenarioPorts writes the sidecar for scenario `name` under
@@ -150,12 +226,15 @@ func LoadScenarios(dir string) ([]Scenario, error) {
 		// The save handler validates before writing, so this should
 		// be rare, and a whole-list failure would be worse UX.
 		ports, _ := loadScenarioPorts(p)
+		checks, checksErr := loadScenarioChecks(p)
 		out = append(out, Scenario{
-			Name:      strings.TrimSuffix(e.Name(), ".xml"),
-			Path:      p,
-			SizeBytes: info.Size(),
-			ModTime:   info.ModTime(),
-			Ports:     ports,
+			Name:        strings.TrimSuffix(e.Name(), ".xml"),
+			Path:        p,
+			SizeBytes:   info.Size(),
+			ModTime:     info.ModTime(),
+			Ports:       ports,
+			Checks:      checks,
+			ChecksError: checksErr,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -172,12 +251,15 @@ func LoadScenario(dir, name string) (*Scenario, error) {
 		return nil, err
 	}
 	ports, _ := loadScenarioPorts(path)
+	checks, checksErr := loadScenarioChecks(path)
 	return &Scenario{
-		Name:      name,
-		Path:      path,
-		SizeBytes: info.Size(),
-		ModTime:   info.ModTime(),
-		Ports:     ports,
+		Name:        name,
+		Path:        path,
+		SizeBytes:   info.Size(),
+		ModTime:     info.ModTime(),
+		Ports:       ports,
+		Checks:      checks,
+		ChecksError: checksErr,
 	}, nil
 }
 
