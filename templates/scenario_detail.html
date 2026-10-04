@@ -101,6 +101,22 @@
   <button type="submit" class="btn btn-sm btn-outline-danger" {{ if .ScenarioRunning }}disabled title="This scenario is currently running"{{ end }}>Delete scenario</button>
 </form>
 
+<h2 class="h5 mt-4">Audio checks</h2>
+<p class="small text-muted mb-2">
+  Optional <code>{{ .Scenario.Name }}.checks.json</code>: after each run the call recording (needs
+  <code>record="true"</code>) is checked, and a failure fails the run and its bot. Leave empty to turn off.
+  <code>thresholds</code> take <code>{"min": …, "max": …}</code> on
+  {{ range $i, $m := .AudioMetrics }}{{ if $i }}, {{ end }}<code>{{ $m }}</code>{{ end }}.
+  <code>expect</code> lists audio the far end should play (a WAV from <a href="/prompts">Prompts</a>; for an echo
+  line, the scenario's own <code>play=</code> file), with optional <code>heard_ms</code> and <code>heard_at_ms</code>
+  rules (ms after answer). Without rules it must simply be heard.
+</p>
+{{ if .Scenario.ChecksError }}<div class="alert alert-danger small">{{ .Scenario.ChecksError }}</div>{{ end }}
+<form method="post" action="/scenarios/{{ .Scenario.Name }}/checks">
+  <textarea name="checks" class="form-control font-monospace small" rows="14" placeholder="{{ .ChecksExample }}">{{ .Checks }}</textarea>
+  <button type="submit" class="btn btn-sm btn-primary mt-2">Save audio checks</button>
+</form>
+
 <!-- CodeMirror 5 from CDN: light, no build step. Replaces the textarea
      with a syntax-highlighted XML editor; the underlying <textarea> stays
      synced so the form submit gets the edited content automatically. -->

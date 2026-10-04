@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/jchavanton/ace/audio"
 	"github.com/jchavanton/ace/config"
 	"github.com/jchavanton/ace/controller"
 	"github.com/jchavanton/ace/models"
@@ -39,6 +40,7 @@ func (s *Server) Register(r *gin.Engine) {
 	r.GET("/scenarios/:name", s.handleScenarioDetail)
 	r.POST("/scenarios/:name", s.handleScenarioSave)
 	r.POST("/scenarios/:name/delete", s.handleScenarioDelete)
+	r.POST("/scenarios/:name/checks", s.handleScenarioChecksSave)
 	r.POST("/scenarios/:name/run", s.handleRun)
 	r.POST("/runs/:id/stop", s.handleRunStop)
 	r.GET("/runs", s.handleRuns)
@@ -183,6 +185,9 @@ func (s *Server) handleScenarioDetail(c *gin.Context) {
 		"ContentTemplate": "content_scenario_detail",
 		"Scenario":        scn,
 		"XML":             xml,
+		"Checks":          models.ReadScenarioChecks(s.Cfg.ScenariosDir, scn.Name),
+		"ChecksExample":   checksExample,
+		"AudioMetrics":    audio.Metrics,
 		// ScenarioRunning gates the Delete button — same scenario file
 		// being read by a live run shouldn't be removed. Run is now
 		// always enabled since users can pick different ports.
