@@ -109,3 +109,27 @@ func TestFindRecordingIgnoresSentAudio(t *testing.T) {
 		}
 	}
 }
+
+// params values become frame counts; anything under one 10 ms frame (or negative)
+// used to hang the run (step 0) or panic the whole process (negative slice index).
+func TestValidateRejectsUnsafeParams(t *testing.T) {
+	for name, p := range map[string]Params{
+		"step under a frame": {MatchStepMs: 5},
+		"negative step":      {MatchStepMs: -250},
+		"window under frame": {MatchWindowMs: 9},
+		"negative window":    {MatchWindowMs: -100},
+		"negative rms":       {SpeechRMS: -1},
+		"negative segment":   {MinSegmentMs: -1},
+		"negative merge gap": {MergeGapMs: -1},
+		"corr above 1":       {MatchMinCorr: 1.5},
+		"negative corr":      {MatchMinCorr: -0.1},
+	} {
+		if err := (&Config{Params: p}).Validate(); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	ok := Config{Params: Params{MatchStepMs: 10, MatchWindowMs: 1000, MatchMinCorr: 0.9}}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("valid params rejected: %v", err)
+	}
+}

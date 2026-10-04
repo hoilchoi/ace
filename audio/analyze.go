@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -30,6 +31,20 @@ func DefaultParams() Params {
 		MatchWindowMs: 1500,
 		MatchStepMs:   250,
 	}
+}
+
+// validate rejects values that would hang or crash the analysis: they become frame
+// counts, so a window or step under one frame is a zero (or negative) loop step.
+func (p Params) validate() error {
+	switch {
+	case p.SpeechRMS < 0, p.MinSegmentMs < 0, p.MergeGapMs < 0:
+		return errors.New("speech_rms, min_segment_ms and merge_gap_ms must not be negative")
+	case p.MatchMinCorr < 0 || p.MatchMinCorr > 1:
+		return errors.New("match_min_corr must be between 0 and 1")
+	case p.MatchWindowMs != 0 && p.MatchWindowMs < FrameMs, p.MatchStepMs != 0 && p.MatchStepMs < FrameMs:
+		return fmt.Errorf("match_window_ms and match_step_ms must be 0 (default) or at least %d", FrameMs)
+	}
+	return nil
 }
 
 func (p Params) withDefaults() Params {
@@ -322,7 +337,7 @@ func FindExpected(rx, ref []float64, p Params) Heard {
 	p = p.withDefaults()
 	h := Heard{Matches: []Match{}}
 	win, step := p.MatchWindowMs/FrameMs, p.MatchStepMs/FrameMs
-	if win == 0 || len(rx) < win || len(ref) < win {
+	if win <= 0 || step <= 0 || len(rx) < win || len(ref) < win {
 		return h
 	}
 	sum, sumSq := make([]float64, len(rx)+1), make([]float64, len(rx)+1)

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 var update = flag.Bool("update", false, "rewrite <name>.want.json from the current output")
@@ -234,5 +235,30 @@ func TestInboundSpeech(t *testing.T) {
 	}
 	if deref(r.RxFirstSpeechMs) != 1000 || r.RxSpeechMs != 1000 || len(r.Expect) != 0 {
 		t.Errorf("got %+v", r)
+	}
+}
+
+// Defence in depth: even with params that skipped validation, FindExpected must return.
+func TestFindExpectedSurvivesBadParams(t *testing.T) {
+	ref := make([]float64, 400)
+	for i := range ref {
+		ref[i] = float64(1000 * (i % 7))
+	}
+	for name, p := range map[string]Params{"step 0": {MatchStepMs: 5}, "negative window": {MatchWindowMs: -100}} {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("%s: panicked: %v", name, r)
+				}
+			}()
+			FindExpected(ref, ref, p)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s: FindExpected did not return", name)
+		}
 	}
 }

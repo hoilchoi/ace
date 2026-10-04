@@ -57,6 +57,9 @@ func (c *Config) Validate() error {
 		sort.Strings(unknown)
 		return fmt.Errorf("unknown metrics %v; known: %v (expected audio goes in \"expect\")", unknown, Metrics)
 	}
+	if err := c.Params.validate(); err != nil {
+		return fmt.Errorf("params: %w", err)
+	}
 	seen := map[string]bool{}
 	for i, e := range c.Expect {
 		if !validName(e.Name) {

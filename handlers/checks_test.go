@@ -50,10 +50,12 @@ func TestScenarioChecksSave(t *testing.T) {
 	}
 
 	for name, body := range map[string]string{
-		"unknown metric": `{"thresholds": {"echo_ms": {"min": 2}}}`,
-		"typo'd key":     `{"threshold": {"rx_speech_ms": {"min": 3000}}}`,
-		"bad expect":     `{"expect": [{"name": "greeting"}]}`,
-		"not json":       `{thresholds`,
+		"unknown metric":  `{"thresholds": {"echo_ms": {"min": 2}}}`,
+		"typo'd key":      `{"threshold": {"rx_speech_ms": {"min": 3000}}}`,
+		"bad expect":      `{"expect": [{"name": "greeting"}]}`,
+		"step under 10ms": `{"params": {"match_step_ms": 5}}`,
+		"negative window": `{"params": {"match_window_ms": -100}}`,
+		"not json":        `{thresholds`,
 	} {
 		if w := postForm(r, "/scenarios/probe/checks", url.Values{"checks": {body}}); w.Code != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", name, w.Code)
