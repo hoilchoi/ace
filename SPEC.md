@@ -26,7 +26,8 @@ In scope:
 Not in scope (v2+):
 - Scenario authoring UI / form-based editing. Today: drop XML in `scenarios/`.
 - Audio content validation via ASR (POST WAVs to a vxml_asr sidecar).
-- Energy / silence / DTMF echo validators.
+- DTMF validators. (Inbound-audio and expected-audio checks shipped as
+  `<scenario>.checks.json`; see README "Audio checks".)
 - Authentication. Bind to private LAN.
 - Multi-host orchestration. Single voip_patrol on the same host.
 - Concurrent runs. v1 serializes via mutex.

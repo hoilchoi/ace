@@ -19,6 +19,7 @@
     <ul class="navbar-nav me-auto">
       <li class="nav-item"><a class="nav-link {{ if eq .Page "scenarios" }}active{{ end }}" href="/scenarios">Scenarios</a></li>
       <li class="nav-item"><a class="nav-link {{ if eq .Page "runs" }}active{{ end }}" href="/runs">Runs</a></li>
+      <li class="nav-item"><a class="nav-link {{ if eq .Page "prompts" }}active{{ end }}" href="/prompts">Prompts</a></li>
       <li class="nav-item">
         <a class="nav-link {{ if eq .Page "bots" }}active{{ end }}" href="/bots">
           Bots
@@ -45,6 +46,7 @@
 {{- else if eq .ContentTemplate "content_bots" -}}         {{ template "content_bots" . }}
 {{- else if eq .ContentTemplate "content_bot_report" -}}   {{ template "content_bot_report" . }}
 {{- else if eq .ContentTemplate "content_alerts" -}}       {{ template "content_alerts" . }}
+{{- else if eq .ContentTemplate "content_prompts" -}}      {{ template "content_prompts" . }}
 {{- end -}}
 </main>
 </body>
