@@ -541,6 +541,8 @@ func evaluateAudio(runDir string, scn *models.Scenario, calls []models.CallResul
 			continue
 		}
 		call.CallID = c.CallID
+		call.SIPCode, call.SIPReason = c.CauseCode, c.Reason
+		call.Answered = c.SIPLatency.Invite200Ms > 0 || c.Duration > 0
 		for _, st := range c.RTPStats {
 			call.RxPackets += st.Rx.Pkt
 			call.HasRTP = true

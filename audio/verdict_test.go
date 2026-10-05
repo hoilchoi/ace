@@ -133,3 +133,27 @@ func TestValidateRejectsUnsafeParams(t *testing.T) {
 		t.Errorf("valid params rejected: %v", err)
 	}
 }
+
+// A call that was never answered has no recording; say so, instead of suggesting
+// record="true" (which the scenario may well have). voip_patrol's cause code is the
+// last status at disconnect, so an answered call can end non-2xx (e.g. 408 BYE timeout).
+func TestEvaluateUnansweredCall(t *testing.T) {
+	_, scn := echoRun(t)
+	const noRecord = `no recording: add record="true" to the call action`
+	for name, tc := range map[string]struct {
+		call Call
+		want string
+	}{
+		"503, not answered":       {Call{SIPCode: 503, SIPReason: "no available destination"}, "call not answered (SIP 503 no available destination): no audio to check"},
+		"no reason":               {Call{SIPCode: 503}, "call not answered (SIP 503): no audio to check"},
+		"1xx at disconnect":       {Call{SIPCode: 180, SIPReason: "Ringing"}, "call not answered (SIP 180 Ringing): no audio to check"},
+		"answered, ended 408":     {Call{SIPCode: 408, SIPReason: "Request Timeout", Answered: true}, noRecord},
+		"answered, normal 200":    {Call{SIPCode: 200, SIPReason: "OK", Answered: true}, noRecord},
+		"unknown (no call found)": {Call{}, noRecord},
+	} {
+		tc.call.CallID = "x"
+		if v := Evaluate(t.TempDir(), scn, &Config{}, tc.call); v.Passed || v.Error != tc.want {
+			t.Errorf("%s: got passed=%v error=%q, want %q", name, v.Passed, v.Error, tc.want)
+		}
+	}
+}

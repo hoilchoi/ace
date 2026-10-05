@@ -93,6 +93,9 @@ type Call struct {
 	CallID    string
 	RxPackets int
 	HasRTP    bool
+	SIPCode   int // voip_patrol's last status at disconnect; 0 when unknown
+	SIPReason string
+	Answered  bool // got a 2xx to the INVITE
 }
 
 // Check is one rule applied to one metric.
@@ -195,7 +198,11 @@ func Evaluate(runDir, scenariosDir string, cfg *Config, call Call) *Verdict {
 
 	rec := FindRecording(runDir, call.CallID)
 	if rec == "" {
-		v.Error = `no recording: add record="true" to the call action`
+		if !call.Answered && call.SIPCode != 0 {
+			v.Error = strings.TrimSpace(fmt.Sprintf("call not answered (SIP %d %s", call.SIPCode, call.SIPReason)) + "): no audio to check"
+		} else {
+			v.Error = `no recording: add record="true" to the call action`
+		}
 		return v
 	}
 	var expected []Expected
