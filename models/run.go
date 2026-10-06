@@ -101,6 +101,20 @@ type RTPDirection struct {
 	Loss      int     `json:"loss"`
 	Discard   int     `json:"discard"`
 	MosLQ     float64 `json:"mos_lq"`
+	// VoiceFrames is the count of 100ms sampler ticks whose signal
+	// level exceeded voip_patrol's voice threshold. Only populated
+	// when the scenario had energy_stats="true"; absent in the JSON
+	// decodes to zero and ScenarioVerdict.Apply treats it as "no
+	// sampling happened, skip the voice-frames check."
+	VoiceFrames int `json:"voice_frames,omitempty"`
+	// LevelAvg / LevelPeak are the mean and max of per-tick signal
+	// level readings on voip_patrol's 0..255 scale (mu-law encoded
+	// mean |amplitude| of a 20 ms bridge frame). Logarithmic-ish, so
+	// the step from 128 -> 192 is ~17 dB. See voip_patrol README's
+	// signal-level section for the dBov mapping. Same opt-in rules
+	// as VoiceFrames: absent -> 0 -> ScenarioVerdict skips the check.
+	LevelAvg  int `json:"level_avg,omitempty"`
+	LevelPeak int `json:"level_peak,omitempty"`
 }
 
 // Aggregate summarizes a run across all calls. Computed after parsing.
@@ -114,6 +128,17 @@ type Aggregate struct {
 	MOSAvgTx      float64 `json:"mos_avg_tx"`
 	RTTAvgMs      int     `json:"rtt_avg_ms"`
 	PacketsLossTx int     `json:"packets_loss_tx"`
+	// Audio-energy aggregates. All zero when no call in the run had
+	// energy_stats enabled, so the UI can hide the panel. VoiceMs is
+	// voice_frames * sampler-period averaged across every rtp_stats
+	// block that reported a non-zero sample count. LevelAvg / LevelPeak
+	// are the mean of per-stream averages / peaks on the 0..255 scale.
+	VoiceAvgRxMs int `json:"voice_avg_rx_ms,omitempty"`
+	VoiceAvgTxMs int `json:"voice_avg_tx_ms,omitempty"`
+	LevelAvgRx   int `json:"level_avg_rx,omitempty"`
+	LevelAvgTx   int `json:"level_avg_tx,omitempty"`
+	LevelPeakRx  int `json:"level_peak_rx,omitempty"`
+	LevelPeakTx  int `json:"level_peak_tx,omitempty"`
 }
 
 // NewRun mints a new Run with a sortable ID and a fresh output dir.

@@ -14,6 +14,7 @@
 package main
 
 import (
+	"html/template"
 	"log"
 	"net/http"
 
@@ -29,6 +30,13 @@ func main() {
 	cfg := config.FromFlags()
 
 	r := gin.Default()
+	// `mul` lets templates convert voip_patrol's voice_frames (100 ms
+	// sampler ticks) to a millisecond display without a parallel field
+	// on CallResult. Keep this list tight; template arithmetic is a
+	// smell, so each entry needs justification.
+	r.SetFuncMap(template.FuncMap{
+		"mul": func(a, b int) int { return a * b },
+	})
 	r.LoadHTMLGlob("templates/*.html")
 	r.Static("/static", "./static")
 

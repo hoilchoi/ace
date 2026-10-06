@@ -205,6 +205,18 @@ func (r *Runner) RecoverOrphanedRuns() (int, error) {
 		run.Error = "orphaned by controller restart"
 		run.FinishedAt = now
 		if calls, _ := loadVoipPatrolResults(filepath.Join(run.Dir(r.Cfg.RunsDir), "results.json")); len(calls) > 0 {
+			if verdict, _ := models.LoadScenarioVerdict(r.Cfg.ScenariosDir, run.Scenario); !verdict.IsZero() {
+				for i := range calls {
+					if ok, extra := verdict.Apply(&calls[i]); !ok {
+						calls[i].Result = "FAIL"
+						if calls[i].Reason == "" {
+							calls[i].Reason = extra
+						} else {
+							calls[i].Reason = calls[i].Reason + "; " + extra
+						}
+					}
+				}
+			}
 			run.Calls = calls
 			run.Aggregate = aggregate(calls)
 		}
@@ -499,6 +511,23 @@ func (r *Runner) execute(ctx context.Context, cancel context.CancelFunc, run *mo
 	// per-call results as they complete, so a crash mid-run still
 	// leaves partial data we want to surface.
 	calls, parseErr := loadVoipPatrolResults(filepath.Join(run.Dir(r.Cfg.RunsDir), "results.json"))
+	// Scenario-level verdict (voice-frames thresholds etc.) runs
+	// *before* aggregate so the pass/fail counts reflect the final
+	// verdict, not voip_patrol's intermediate one. Load failure is
+	// non-fatal — a missing/broken sidecar just means "no extra
+	// checks", matching the ports-sidecar policy.
+	if verdict, _ := models.LoadScenarioVerdict(r.Cfg.ScenariosDir, run.Scenario); !verdict.IsZero() {
+		for i := range calls {
+			if ok, extra := verdict.Apply(&calls[i]); !ok {
+				calls[i].Result = "FAIL"
+				if calls[i].Reason == "" {
+					calls[i].Reason = extra
+				} else {
+					calls[i].Reason = calls[i].Reason + "; " + extra
+				}
+			}
+		}
+	}
 	run.Calls = calls
 	run.Aggregate = aggregate(calls)
 	if run.Status != "error" && run.Status != "stopped" {
@@ -568,6 +597,17 @@ func aggregate(calls []models.CallResult) models.Aggregate {
 		rttSum    = 0
 		rttN      = 0
 		mosN      = 0
+		// Energy totals: average of per-stream averages, max of
+		// per-stream peaks. energyN counts only streams that reported
+		// sampling (voice_frames > 0 or level_avg/peak > 0) so a run
+		// without energy_stats stays at zero and the UI hides the panel.
+		voiceFramesRx = 0
+		voiceFramesTx = 0
+		levelAvgRxSum = 0
+		levelAvgTxSum = 0
+		levelPeakRx   = 0
+		levelPeakTx   = 0
+		energyN       = 0
 	)
 	for _, c := range calls {
 		if strings.EqualFold(c.Result, "PASS") {
@@ -589,6 +629,24 @@ func aggregate(calls []models.CallResult) models.Aggregate {
 				rttN++
 			}
 			agg.PacketsLossTx += rs.Tx.Loss
+			// Count a stream as energy-sampled if either direction
+			// reported any level or voice-frame data. Zero everywhere
+			// means energy_stats wasn't on this call.
+			if rs.Rx.VoiceFrames > 0 || rs.Tx.VoiceFrames > 0 ||
+				rs.Rx.LevelAvg > 0 || rs.Tx.LevelAvg > 0 ||
+				rs.Rx.LevelPeak > 0 || rs.Tx.LevelPeak > 0 {
+				voiceFramesRx += rs.Rx.VoiceFrames
+				voiceFramesTx += rs.Tx.VoiceFrames
+				levelAvgRxSum += rs.Rx.LevelAvg
+				levelAvgTxSum += rs.Tx.LevelAvg
+				if rs.Rx.LevelPeak > levelPeakRx {
+					levelPeakRx = rs.Rx.LevelPeak
+				}
+				if rs.Tx.LevelPeak > levelPeakTx {
+					levelPeakTx = rs.Tx.LevelPeak
+				}
+				energyN++
+			}
 		}
 	}
 	agg.Invite200P50 = percentile(invite200, 50)
@@ -599,6 +657,14 @@ func aggregate(calls []models.CallResult) models.Aggregate {
 	}
 	if rttN > 0 {
 		agg.RTTAvgMs = rttSum / rttN
+	}
+	if energyN > 0 {
+		agg.VoiceAvgRxMs = (voiceFramesRx * models.SamplerPeriodMs) / energyN
+		agg.VoiceAvgTxMs = (voiceFramesTx * models.SamplerPeriodMs) / energyN
+		agg.LevelAvgRx = levelAvgRxSum / energyN
+		agg.LevelAvgTx = levelAvgTxSum / energyN
+		agg.LevelPeakRx = levelPeakRx
+		agg.LevelPeakTx = levelPeakTx
 	}
 	return agg
 }
