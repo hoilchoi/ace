@@ -61,6 +61,25 @@
     <div class="small text-muted">{{ .Aggregate.PacketsLossTx }} Tx pkts lost</div>
   </div></div>
 </div>
+{{ if or .Aggregate.VoiceAvgRxMs .Aggregate.VoiceAvgTxMs .Aggregate.LevelAvgRx .Aggregate.LevelAvgTx }}
+<div class="row mb-4">
+  <div class="col-md-3"><div class="border rounded p-3">
+    <div class="text-muted small">Voice duration (avg)</div>
+    <div class="h4">{{ .Aggregate.VoiceAvgRxMs }} ms <small class="text-muted">Rx</small></div>
+    <div class="small text-muted">{{ .Aggregate.VoiceAvgTxMs }} ms Tx</div>
+  </div></div>
+  <div class="col-md-3"><div class="border rounded p-3">
+    <div class="text-muted small">Level avg (0..255)</div>
+    <div class="h4">{{ .Aggregate.LevelAvgRx }} <small class="text-muted">Rx</small></div>
+    <div class="small text-muted">{{ .Aggregate.LevelAvgTx }} Tx</div>
+  </div></div>
+  <div class="col-md-3"><div class="border rounded p-3">
+    <div class="text-muted small">Level peak (0..255)</div>
+    <div class="h4">{{ .Aggregate.LevelPeakRx }} <small class="text-muted">Rx</small></div>
+    <div class="small text-muted">{{ .Aggregate.LevelPeakTx }} Tx</div>
+  </div></div>
+</div>
+{{ end }}
 {{ end }}
 
 {{ if .Calls }}
@@ -70,7 +89,11 @@
   <thead><tr>
     <th>#</th><th>Start</th><th>Result</th><th>Cause</th><th>Reason</th><th class="text-end">Dur</th>
     <th class="text-end">100</th><th class="text-end">180</th><th class="text-end">200</th>
-    <th class="text-end">MOS Rx/Tx</th><th>Call-ID</th>
+    <th class="text-end">MOS Rx/Tx</th>
+    <th class="text-end" title="Rx / Tx voice duration (ms)">Voice Rx/Tx</th>
+    <th class="text-end" title="Rx / Tx level_avg (0..255)">Level avg</th>
+    <th class="text-end" title="Rx / Tx level_peak (0..255)">Level peak</th>
+    <th>Call-ID</th>
   </tr></thead>
   <tbody>
   {{ range $i, $c := .Calls }}
@@ -89,6 +112,15 @@
       <td class="text-end small text-muted">{{ if $c.SIPLatency.Invite200Ms }}{{ $c.SIPLatency.Invite200Ms }} ms{{ end }}</td>
       <td class="text-end small text-muted">
         {{ range $c.RTPStats }}{{ printf "%.2f / %.2f" .Rx.MosLQ .Tx.MosLQ }}{{ end }}
+      </td>
+      <td class="text-end small text-muted">
+        {{ range $c.RTPStats }}{{ if or .Rx.VoiceFrames .Tx.VoiceFrames }}{{ mul .Rx.VoiceFrames 100 }} / {{ mul .Tx.VoiceFrames 100 }} ms{{ end }}{{ end }}
+      </td>
+      <td class="text-end small text-muted">
+        {{ range $c.RTPStats }}{{ if or .Rx.LevelAvg .Tx.LevelAvg }}{{ .Rx.LevelAvg }} / {{ .Tx.LevelAvg }}{{ end }}{{ end }}
+      </td>
+      <td class="text-end small text-muted">
+        {{ range $c.RTPStats }}{{ if or .Rx.LevelPeak .Tx.LevelPeak }}{{ .Rx.LevelPeak }} / {{ .Tx.LevelPeak }}{{ end }}{{ end }}
       </td>
       <td class="font-monospace small text-muted">{{ $c.CallID }}</td>
     </tr>

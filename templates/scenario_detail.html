@@ -92,6 +92,79 @@
   </div>
 </fieldset>
 
+<!-- Validation: ACE-side pass/fail criteria applied after voip_patrol
+     finishes. Reads voice_frames out of the result JSON and downgrades
+     the row to FAIL on shortfall. Thresholds are saved to a sidecar
+     file <name>.verdict.json alongside <name>.ports.json. Zero (or
+     blank) in either field disables that direction's check; both zero
+     deletes the sidecar entirely. -->
+<fieldset class="border rounded p-2 mb-3">
+  <legend class="float-none w-auto px-2 small text-muted mb-0">Validation — audio energy (ACE post-run)</legend>
+  <div class="small text-muted mb-2">
+    Any non-zero threshold flips the call to FAIL on shortfall; blank or 0 disables that check.
+    Levels are on voip_patrol's 0..255 scale (see the <a href="https://github.com/jchavanton/voip_patrol#signal-level-sampling" target="_blank">dBov table</a>);
+    typical conversational voice has <code>level_avg</code> around 96–128, <code>level_peak</code> around 160–200.
+  </div>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="small fw-semibold mb-1">Rx (inbound from remote)</div>
+      <div class="row g-2 align-items-center mb-1">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Minimum total inbound voice duration (sum of sampler ticks above voip_patrol's voice threshold).">Min voice (ms)</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="min_rx_voice_ms" value="{{ if .VerdictMinRxMs }}{{ .VerdictMinRxMs }}{{ end }}" min="0" max="86400000" step="100" placeholder="0" class="form-control form-control-sm" style="width:7em"></div>
+        <div class="col-auto small text-muted">5000 = 5 s</div>
+      </div>
+      <div class="row g-2 align-items-center mb-1">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Minimum mean amplitude across the call. Catches 'line was open but dead'. See dBov table.">Min level_avg</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="min_rx_level_avg" value="{{ if .VerdictMinRxLevelAvg }}{{ .VerdictMinRxLevelAvg }}{{ end }}" min="0" max="255" placeholder="0" class="form-control form-control-sm" style="width:6em"></div>
+        <div class="col-auto small text-muted">0..255</div>
+      </div>
+      <div class="row g-2 align-items-center mb-1">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Minimum peak amplitude. Useful if you expect at least one loud burst (e.g. a tone or alert).">Min level_peak</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="min_rx_level_peak" value="{{ if .VerdictMinRxLevelPeak }}{{ .VerdictMinRxLevelPeak }}{{ end }}" min="0" max="255" placeholder="0" class="form-control form-control-sm" style="width:6em"></div>
+        <div class="col-auto small text-muted">0..255</div>
+      </div>
+      <div class="row g-2 align-items-center">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Maximum peak amplitude. Catches clipping / distortion. 240 ≈ -3 dBov, 250+ ≈ hard clip.">Max level_peak</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="max_rx_level_peak" value="{{ if .VerdictMaxRxLevelPeak }}{{ .VerdictMaxRxLevelPeak }}{{ end }}" min="0" max="255" placeholder="0" class="form-control form-control-sm" style="width:6em"></div>
+        <div class="col-auto small text-muted">0..255</div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="small fw-semibold mb-1">Tx (outbound to remote)</div>
+      <div class="row g-2 align-items-center mb-1">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Minimum total outbound voice duration.">Min voice (ms)</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="min_tx_voice_ms" value="{{ if .VerdictMinTxMs }}{{ .VerdictMinTxMs }}{{ end }}" min="0" max="86400000" step="100" placeholder="0" class="form-control form-control-sm" style="width:7em"></div>
+        <div class="col-auto small text-muted">5000 = 5 s</div>
+      </div>
+      <div class="row g-2 align-items-center mb-1">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Minimum mean outbound amplitude.">Min level_avg</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="min_tx_level_avg" value="{{ if .VerdictMinTxLevelAvg }}{{ .VerdictMinTxLevelAvg }}{{ end }}" min="0" max="255" placeholder="0" class="form-control form-control-sm" style="width:6em"></div>
+        <div class="col-auto small text-muted">0..255</div>
+      </div>
+      <div class="row g-2 align-items-center mb-1">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Minimum outbound peak amplitude.">Min level_peak</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="min_tx_level_peak" value="{{ if .VerdictMinTxLevelPeak }}{{ .VerdictMinTxLevelPeak }}{{ end }}" min="0" max="255" placeholder="0" class="form-control form-control-sm" style="width:6em"></div>
+        <div class="col-auto small text-muted">0..255</div>
+      </div>
+      <div class="row g-2 align-items-center">
+        <div class="col-5"><label class="col-form-label small text-muted" title="Maximum outbound peak amplitude (clipping guard on sent audio).">Max level_peak</label></div>
+        <div class="col-auto"><input form="scenario-form" type="number" name="max_tx_level_peak" value="{{ if .VerdictMaxTxLevelPeak }}{{ .VerdictMaxTxLevelPeak }}{{ end }}" min="0" max="255" placeholder="0" class="form-control form-control-sm" style="width:6em"></div>
+        <div class="col-auto small text-muted">0..255</div>
+      </div>
+    </div>
+  </div>
+  {{ if .VerdictEnergyStatsMiss }}
+  <div class="alert alert-warning small py-2 mt-2 mb-0">
+    Thresholds are set but the scenario XML does not contain
+    <code>energy_stats="true"</code>. voip_patrol will not sample
+    audio levels, <code>voice_frames</code> will be zero, and the
+    verdict will always FAIL. Add <code>energy_stats="true"</code>
+    to the <code>&lt;action type="call"&gt;</code> (or
+    <code>&lt;action type="accept"&gt;</code>) tag.
+  </div>
+  {{ end }}
+</fieldset>
+
   <textarea name="xml" id="xml-editor" class="form-control" style="font-family:monospace; min-height:60vh;">{{ .XML }}</textarea>
 </form>
 

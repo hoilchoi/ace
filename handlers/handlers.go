@@ -204,6 +204,20 @@ func (s *Server) handleScenarioDetail(c *gin.Context) {
 		// HasSavedPorts controls whether the "Reset saved ports" hint
 		// shows next to the Save button.
 		"HasSavedPorts": scn.Ports != (models.ScenarioPorts{}),
+		// Verdict thresholds and the "XML missing energy_stats" warning
+		// flag. The flag is a cheap substring check — operators can
+		// easily beat it with comments or attribute quoting variants,
+		// but it's good enough as a nudge (we deliberately picked the
+		// non-invasive route and don't block saves on it).
+		"VerdictMinRxMs":         scn.Verdict.MinRxVoiceMs,
+		"VerdictMinTxMs":         scn.Verdict.MinTxVoiceMs,
+		"VerdictMinRxLevelAvg":   scn.Verdict.MinRxLevelAvg,
+		"VerdictMinTxLevelAvg":   scn.Verdict.MinTxLevelAvg,
+		"VerdictMinRxLevelPeak":  scn.Verdict.MinRxLevelPeak,
+		"VerdictMinTxLevelPeak":  scn.Verdict.MinTxLevelPeak,
+		"VerdictMaxRxLevelPeak":  scn.Verdict.MaxRxLevelPeak,
+		"VerdictMaxTxLevelPeak":  scn.Verdict.MaxTxLevelPeak,
+		"VerdictEnergyStatsMiss": !scn.Verdict.IsZero() && !strings.Contains(xml, "energy_stats=\"true\""),
 	})
 }
 
@@ -503,7 +517,68 @@ func (s *Server) handleScenarioSave(c *gin.Context) {
 			return
 		}
 	}
+
+	// Verdict sidecar: parsed like ports — zero = delete, non-zero =
+	// save. Negative values are rejected (parseNonNegIntField returns
+	// an error) so a typo doesn't silently disable the check.
+	verdictFields := []struct {
+		key string
+		dst *int
+	}{
+		{"min_rx_voice_ms", new(int)}, {"min_tx_voice_ms", new(int)},
+		{"min_rx_level_avg", new(int)}, {"min_tx_level_avg", new(int)},
+		{"min_rx_level_peak", new(int)}, {"min_tx_level_peak", new(int)},
+		{"max_rx_level_peak", new(int)}, {"max_tx_level_peak", new(int)},
+	}
+	for _, f := range verdictFields {
+		v, err := parseNonNegIntField(c.PostForm(f.key), f.key)
+		if err != nil {
+			c.String(http.StatusBadRequest, "%v", err)
+			return
+		}
+		*f.dst = v
+	}
+	sv := models.ScenarioVerdict{
+		MinRxVoiceMs:   *verdictFields[0].dst,
+		MinTxVoiceMs:   *verdictFields[1].dst,
+		MinRxLevelAvg:  *verdictFields[2].dst,
+		MinTxLevelAvg:  *verdictFields[3].dst,
+		MinRxLevelPeak: *verdictFields[4].dst,
+		MinTxLevelPeak: *verdictFields[5].dst,
+		MaxRxLevelPeak: *verdictFields[6].dst,
+		MaxTxLevelPeak: *verdictFields[7].dst,
+	}
+	if sv.IsZero() {
+		if err := models.DeleteScenarioVerdict(s.Cfg.ScenariosDir, name); err != nil {
+			c.String(http.StatusInternalServerError, "delete verdict: %v", err)
+			return
+		}
+	} else {
+		if err := models.SaveScenarioVerdict(s.Cfg.ScenariosDir, name, sv); err != nil {
+			c.String(http.StatusInternalServerError, "save verdict: %v", err)
+			return
+		}
+	}
+
 	c.Redirect(http.StatusSeeOther, "/scenarios/"+name)
+}
+
+// parseNonNegIntField parses an optional integer form field. Blank =
+// 0 = "unset". Negative values are rejected so a stray "-" doesn't
+// silently disable a threshold.
+func parseNonNegIntField(raw, name string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: not a number: %q", name, raw)
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("%s: %d is negative", name, n)
+	}
+	return n, nil
 }
 
 // handleScenarioCreate creates a new scenario file. Requires a name
@@ -782,6 +857,7 @@ const scenarioTemplate = `<config>
             callee="+16477988128@sbc.example.com"
             max_duration="60" hangup="55"
             rtp_stats="true"
+            energy_stats="true"
             record="true"
             play_dtmf="WW1#"/>
 

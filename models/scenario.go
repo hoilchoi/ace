@@ -38,6 +38,12 @@ type Scenario struct {
 	// "not saved — fall back to the runner's global defaults." The
 	// sidecar is opt-in: absent file = zero Ports.
 	Ports ScenarioPorts
+
+	// Verdict is the per-scenario pass/fail criteria applied by ACE
+	// after voip_patrol finishes, read from `<name>.verdict.json`.
+	// Zero fields = no extra checks (ACE trusts voip_patrol's verdict
+	// as-is); absent file = zero Verdict.
+	Verdict ScenarioVerdict
 }
 
 // ScenarioPorts is the on-disk shape of a scenario's saved per-run
@@ -127,6 +133,243 @@ func DeleteScenarioPorts(dir, name string) error {
 	return nil
 }
 
+// ScenarioVerdict is ACE's post-run pass/fail criteria for a scenario,
+// persisted alongside the XML as `<name>.verdict.json`. Verdict rules
+// run after voip_patrol finishes and read fields it emitted (currently
+// just rtp_stats[].{Tx,Rx}.voice_frames when energy_stats="true").
+//
+// Each min_ field is 0 = "disabled, no check." A non-zero value is the
+// minimum voice duration in milliseconds that must have been sampled
+// in the given direction, across every rtp_stats block of every call
+// in the run. ms is converted to a frame count at check time using
+// SamplerPeriodMs — keeping the config in ms means a cadence change
+// in voip_patrol doesn't retroactively invalidate stored thresholds.
+// Any shortfall downgrades the call's result from PASS to FAIL and
+// appends the shortfall to its reason.
+type ScenarioVerdict struct {
+	MinRxVoiceMs int `json:"min_rx_voice_ms,omitempty"`
+	MinTxVoiceMs int `json:"min_tx_voice_ms,omitempty"`
+	// Level thresholds operate on voip_patrol's 0..255 mu-law scale
+	// (see levelToDBov below). All six are 0 = disabled.
+	// Min floors: direction's lowest cross-stream value must be at
+	// least this. Max ceilings: direction's highest cross-stream
+	// value must be at most this (clipping guard).
+	MinRxLevelAvg  int `json:"min_rx_level_avg,omitempty"`
+	MinTxLevelAvg  int `json:"min_tx_level_avg,omitempty"`
+	MinRxLevelPeak int `json:"min_rx_level_peak,omitempty"`
+	MinTxLevelPeak int `json:"min_tx_level_peak,omitempty"`
+	MaxRxLevelPeak int `json:"max_rx_level_peak,omitempty"`
+	MaxTxLevelPeak int `json:"max_tx_level_peak,omitempty"`
+}
+
+// SamplerPeriodMs is voip_patrol's energy sampler tick period
+// (voip_patrol/src/voip_patrol/action.cc, do_wait loop). Verdict ms
+// thresholds divide by this to get a frame count. If the voip_patrol
+// cadence ever changes, update this constant in lockstep.
+const SamplerPeriodMs = 100
+
+// levelToDBov converts a 0..255 mu-law signal level (as emitted by
+// pjsua_conf_get_signal_level) to approximate dBov so error messages
+// can show both numbers. Table is pre-computed from the mu-law curve
+// matching the dBov table in voip_patrol's README; linear interpolation
+// between stops is close enough for an operator-facing diagnostic.
+// Returns 0 at full scale and more-negative values as the signal gets
+// quieter. Level 0 (digital silence) returns -99 as a sentinel floor.
+func levelToDBov(level int) int {
+	if level <= 0 {
+		return -99
+	}
+	if level >= 255 {
+		return 0
+	}
+	// (level, dBov) stops, keyed on the README table.
+	stops := [...]struct{ L, D int }{
+		{8, -64}, {16, -56}, {32, -48}, {64, -39}, {96, -31},
+		{120, -26}, {128, -25}, {160, -18}, {192, -12}, {224, -6}, {255, 0},
+	}
+	// Below the lowest stop: linear from (0,-99) to (8,-64).
+	if level < stops[0].L {
+		return -99 + (level * (stops[0].D - (-99)) / stops[0].L)
+	}
+	for i := 0; i < len(stops)-1; i++ {
+		a, b := stops[i], stops[i+1]
+		if level >= a.L && level <= b.L {
+			span := b.L - a.L
+			if span == 0 {
+				return a.D
+			}
+			return a.D + ((level-a.L)*(b.D-a.D))/span
+		}
+	}
+	return 0
+}
+
+// IsZero returns true when no checks are configured; callers skip
+// loading/applying the verdict entirely in that case.
+func (v ScenarioVerdict) IsZero() bool { return v == (ScenarioVerdict{}) }
+
+// VerdictPath returns the absolute path to the scenario's sidecar
+// verdict JSON file.
+func (s *Scenario) VerdictPath() string {
+	return strings.TrimSuffix(s.Path, ".xml") + ".verdict.json"
+}
+
+// loadScenarioVerdict reads the sidecar for the given scenario XML path.
+// Missing file returns a zero ScenarioVerdict + nil (the normal "no
+// extra checks" case). Malformed JSON returns an error.
+func loadScenarioVerdict(scenarioPath string) (ScenarioVerdict, error) {
+	p := strings.TrimSuffix(scenarioPath, ".xml") + ".verdict.json"
+	f, err := os.Open(p)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ScenarioVerdict{}, nil
+		}
+		return ScenarioVerdict{}, err
+	}
+	defer f.Close()
+	var out ScenarioVerdict
+	if err := json.NewDecoder(f).Decode(&out); err != nil {
+		return ScenarioVerdict{}, fmt.Errorf("parse %s: %w", p, err)
+	}
+	return out, nil
+}
+
+// LoadScenarioVerdict is the public counterpart used by the runner,
+// which doesn't carry a full Scenario — just the dir + name.
+func LoadScenarioVerdict(dir, name string) (ScenarioVerdict, error) {
+	return loadScenarioVerdict(filepath.Join(dir, name+".xml"))
+}
+
+// SaveScenarioVerdict writes the sidecar for scenario `name` atomically.
+// Caller should DeleteScenarioVerdict instead of saving an all-zero
+// struct, so a disabled verdict leaves no file on disk.
+func SaveScenarioVerdict(dir, name string, v ScenarioVerdict) error {
+	path := filepath.Join(dir, name+".verdict.json")
+	tmp, err := os.CreateTemp(dir, "."+name+".verdict.*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	enc := json.NewEncoder(tmp)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// DeleteScenarioVerdict removes the sidecar. ENOENT is not an error.
+func DeleteScenarioVerdict(dir, name string) error {
+	path := filepath.Join(dir, name+".verdict.json")
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// Apply enforces the verdict against one CallResult. Returns (pass,
+// reason-suffix). pass=false means the caller should downgrade the
+// call's Result to FAIL; reason-suffix is "" when there is nothing
+// to append (either the check passed or wasn't configured).
+//
+// Semantics:
+//   - Zero thresholds = no check; returns (true, "").
+//   - Non-zero threshold on a call with no rtp_stats = fail (sampler
+//     never ran, which is the whole point of configuring the verdict).
+//   - Threshold compared against every rtp_stats block's direction;
+//     the lowest value wins. This matches "did audio flow for every
+//     media session?", not "did any session see audio."
+func (v ScenarioVerdict) Apply(call *CallResult) (bool, string) {
+	if v.IsZero() {
+		return true, ""
+	}
+	// Only call-type actions have RTP; message/register/etc. are
+	// opaque to the verdict (and shouldn't configure it anyway).
+	if call.Action != "call" && call.Action != "accept" {
+		return true, ""
+	}
+	if len(call.RTPStats) == 0 {
+		return false, "no rtp_stats produced; is energy_stats=\"true\" set on the action?"
+	}
+	// Reduce every rtp_stats block to one worst-case value per
+	// direction, per metric. "Worst" is min for floor checks (voice
+	// frames, level_avg, min-level_peak) and max for ceiling checks
+	// (max-level_peak). We walk the slice once and track both ends
+	// of what we need; `-1` marks "not yet seen a sample" to
+	// distinguish from a legitimate zero.
+	rxFramesMin, txFramesMin := -1, -1
+	rxAvgMin, txAvgMin := -1, -1
+	rxPeakMin, txPeakMin := -1, -1
+	rxPeakMax, txPeakMax := -1, -1
+	for _, s := range call.RTPStats {
+		if rxFramesMin < 0 || s.Rx.VoiceFrames < rxFramesMin {
+			rxFramesMin = s.Rx.VoiceFrames
+		}
+		if txFramesMin < 0 || s.Tx.VoiceFrames < txFramesMin {
+			txFramesMin = s.Tx.VoiceFrames
+		}
+		if rxAvgMin < 0 || s.Rx.LevelAvg < rxAvgMin {
+			rxAvgMin = s.Rx.LevelAvg
+		}
+		if txAvgMin < 0 || s.Tx.LevelAvg < txAvgMin {
+			txAvgMin = s.Tx.LevelAvg
+		}
+		if rxPeakMin < 0 || s.Rx.LevelPeak < rxPeakMin {
+			rxPeakMin = s.Rx.LevelPeak
+		}
+		if txPeakMin < 0 || s.Tx.LevelPeak < txPeakMin {
+			txPeakMin = s.Tx.LevelPeak
+		}
+		if s.Rx.LevelPeak > rxPeakMax {
+			rxPeakMax = s.Rx.LevelPeak
+		}
+		if s.Tx.LevelPeak > txPeakMax {
+			txPeakMax = s.Tx.LevelPeak
+		}
+	}
+	rxMs := rxFramesMin * SamplerPeriodMs
+	txMs := txFramesMin * SamplerPeriodMs
+	var reasons []string
+	if v.MinRxVoiceMs > 0 && rxMs < v.MinRxVoiceMs {
+		reasons = append(reasons, fmt.Sprintf("rx voice=%dms (%d frames) below min=%dms", rxMs, rxFramesMin, v.MinRxVoiceMs))
+	}
+	if v.MinTxVoiceMs > 0 && txMs < v.MinTxVoiceMs {
+		reasons = append(reasons, fmt.Sprintf("tx voice=%dms (%d frames) below min=%dms", txMs, txFramesMin, v.MinTxVoiceMs))
+	}
+	if v.MinRxLevelAvg > 0 && rxAvgMin < v.MinRxLevelAvg {
+		reasons = append(reasons, fmt.Sprintf("rx level_avg=%d below min=%d (%d vs %d dBov)",
+			rxAvgMin, v.MinRxLevelAvg, levelToDBov(rxAvgMin), levelToDBov(v.MinRxLevelAvg)))
+	}
+	if v.MinTxLevelAvg > 0 && txAvgMin < v.MinTxLevelAvg {
+		reasons = append(reasons, fmt.Sprintf("tx level_avg=%d below min=%d (%d vs %d dBov)",
+			txAvgMin, v.MinTxLevelAvg, levelToDBov(txAvgMin), levelToDBov(v.MinTxLevelAvg)))
+	}
+	if v.MinRxLevelPeak > 0 && rxPeakMin < v.MinRxLevelPeak {
+		reasons = append(reasons, fmt.Sprintf("rx level_peak=%d below min=%d (%d vs %d dBov)",
+			rxPeakMin, v.MinRxLevelPeak, levelToDBov(rxPeakMin), levelToDBov(v.MinRxLevelPeak)))
+	}
+	if v.MinTxLevelPeak > 0 && txPeakMin < v.MinTxLevelPeak {
+		reasons = append(reasons, fmt.Sprintf("tx level_peak=%d below min=%d (%d vs %d dBov)",
+			txPeakMin, v.MinTxLevelPeak, levelToDBov(txPeakMin), levelToDBov(v.MinTxLevelPeak)))
+	}
+	if v.MaxRxLevelPeak > 0 && rxPeakMax > v.MaxRxLevelPeak {
+		reasons = append(reasons, fmt.Sprintf("rx level_peak=%d above max=%d (%d vs %d dBov, clipping)",
+			rxPeakMax, v.MaxRxLevelPeak, levelToDBov(rxPeakMax), levelToDBov(v.MaxRxLevelPeak)))
+	}
+	if v.MaxTxLevelPeak > 0 && txPeakMax > v.MaxTxLevelPeak {
+		reasons = append(reasons, fmt.Sprintf("tx level_peak=%d above max=%d (%d vs %d dBov, clipping)",
+			txPeakMax, v.MaxTxLevelPeak, levelToDBov(txPeakMax), levelToDBov(v.MaxTxLevelPeak)))
+	}
+	if len(reasons) == 0 {
+		return true, ""
+	}
+	return false, strings.Join(reasons, "; ")
+}
+
 // LoadScenarios returns every scenario in dir, sorted by name. Non-XML
 // files are skipped. Returns an empty slice (not an error) when dir is
 // empty — that's the fresh-install state and the UI handles it.
@@ -150,12 +393,14 @@ func LoadScenarios(dir string) ([]Scenario, error) {
 		// The save handler validates before writing, so this should
 		// be rare, and a whole-list failure would be worse UX.
 		ports, _ := loadScenarioPorts(p)
+		verdict, _ := loadScenarioVerdict(p)
 		out = append(out, Scenario{
 			Name:      strings.TrimSuffix(e.Name(), ".xml"),
 			Path:      p,
 			SizeBytes: info.Size(),
 			ModTime:   info.ModTime(),
 			Ports:     ports,
+			Verdict:   verdict,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -172,12 +417,14 @@ func LoadScenario(dir, name string) (*Scenario, error) {
 		return nil, err
 	}
 	ports, _ := loadScenarioPorts(path)
+	verdict, _ := loadScenarioVerdict(path)
 	return &Scenario{
 		Name:      name,
 		Path:      path,
 		SizeBytes: info.Size(),
 		ModTime:   info.ModTime(),
 		Ports:     ports,
+		Verdict:   verdict,
 	}, nil
 }
 
