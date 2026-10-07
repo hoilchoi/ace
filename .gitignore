@@ -8,3 +8,8 @@
 
 # Local-only overrides
 /config.local.yml
+
+# Operator-local ansible inventory. Each deployer maintains their own
+# host list; the committed inventory.example.yml is the schema and
+# shared baseline — copy to inventory.yml after cloning and edit.
+/ansible/inventory.yml

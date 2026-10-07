@@ -6,9 +6,12 @@
 # subsequent runs only rebuild what changed.
 #
 # Usage:
+#   cp inventory.example.yml inventory.yml   # first run only
 #   ansible-playbook -i inventory.yml playbook.yml
 #
 # Per-host overrides go in the inventory (see ace_public_address).
+# inventory.yml is gitignored — each operator maintains their own host
+# list; inventory.example.yml is the shared baseline.
 
 - hosts: ace_hosts:ace_gcp_hosts
   # GCP hosts run rootless-ish (compose invoked with sudo), LAN hosts run

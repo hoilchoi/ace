@@ -1,4 +1,6 @@
-# Inventory for ace deployments.
+# Example inventory for ace deployments. Copy to inventory.yml and
+# edit — inventory.yml itself is gitignored, so each operator keeps
+# their own host list without churning this file.
 #
 # ace runs on "client" hosts — boxes that originate test calls into the
 # Aizan VXML stack. Separate from the vxml runtime inventory (~/git/aizan/vxml/
