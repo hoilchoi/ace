@@ -12,4 +12,4 @@
 # as sensitive — leaking a hash lets an attacker brute-force offline.
 # Move to ansible-vault once the team grows beyond a single user.
 ace_basic_auth_users:
-  - "julien:$2y$10$6fgqZ.niGviLpnGjZuEApuHIN1MyGr.pDK0wTfjzO/gEUcTu1vfam"
+  - "julien:$2b$10$Hte4hAqG3iv6I2CIt2V2WurpRgbVPmzp8uNzc6VvF4UlRlzrfCwQe"
