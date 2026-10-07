@@ -83,6 +83,16 @@ type SIPLatency struct {
 	Invite200Ms int `json:"invite200Ms"`
 }
 
+// EnergyStats is the call's last rtp_stats block. voip_patrol keeps one set
+// of energy counters per call and writes the running totals into every
+// block, so the last one covers the whole call. Zero when there is none.
+func (c CallResult) EnergyStats() RTPStats {
+	if len(c.RTPStats) == 0 {
+		return RTPStats{}
+	}
+	return c.RTPStats[len(c.RTPStats)-1]
+}
+
 // RTPStats mirrors one entry of voip_patrol's "rtp_stats" array.
 type RTPStats struct {
 	RTT             int          `json:"rtt"`

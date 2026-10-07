@@ -140,9 +140,10 @@ func DeleteScenarioPorts(dir, name string) error {
 //
 // Each min_ field is 0 = "disabled, no check." A non-zero value is the
 // minimum voice duration in milliseconds that must have been sampled
-// in the given direction by each call in the run. ms is converted to a frame count at check time using
-// SamplerPeriodMs — keeping the config in ms means a cadence change
-// in voip_patrol doesn't retroactively invalidate stored thresholds.
+// in the given direction by each call in the run. ms is converted to a
+// frame count at check time using SamplerPeriodMs — keeping the config
+// in ms means a cadence change in voip_patrol doesn't retroactively
+// invalidate stored thresholds.
 // Any shortfall downgrades the call's result from PASS to FAIL and
 // appends the shortfall to its reason.
 type ScenarioVerdict struct {
@@ -293,10 +294,8 @@ func (v ScenarioVerdict) Apply(call *CallResult) (bool, string) {
 	if len(call.RTPStats) == 0 {
 		return false, "no rtp_stats produced; is energy_stats=\"true\" set on the action?"
 	}
-	// voip_patrol keeps one set of energy counters per call and writes the
-	// running totals into every rtp_stats block, so the last block holds the
-	// whole call (its peak is the running max, its avg the call-wide mean).
-	last := call.RTPStats[len(call.RTPStats)-1]
+	// Peak is the call's running max, avg its call-wide mean (see EnergyStats).
+	last := call.EnergyStats()
 	rx, tx := last.Rx, last.Tx
 	rxMs := rx.VoiceFrames * SamplerPeriodMs
 	txMs := tx.VoiceFrames * SamplerPeriodMs

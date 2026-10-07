@@ -630,13 +630,9 @@ func aggregate(calls []models.CallResult) models.Aggregate {
 			}
 			agg.PacketsLossTx += rs.Tx.Loss
 		}
-		if len(c.RTPStats) == 0 {
-			continue
-		}
-		// Each block carries the call's running energy totals (see
-		// ScenarioVerdict.Apply), so a call counts once, by its last block.
-		// Zero everywhere means energy_stats wasn't on this call.
-		rs := c.RTPStats[len(c.RTPStats)-1]
+		// A call counts once, by its whole-call totals (EnergyStats). Zero
+		// everywhere means energy_stats wasn't on this call.
+		rs := c.EnergyStats()
 		if rs.Rx.VoiceFrames > 0 || rs.Tx.VoiceFrames > 0 ||
 			rs.Rx.LevelAvg > 0 || rs.Tx.LevelAvg > 0 ||
 			rs.Rx.LevelPeak > 0 || rs.Tx.LevelPeak > 0 {
