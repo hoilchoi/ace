@@ -51,15 +51,21 @@ Run a scenario and exit non-zero unless it passes:
 ```sh
 #!/bin/sh
 # usage: ace-check.sh <ace-url> <scenario>   e.g. ace-check.sh http://ace:8086 probe
+# ACE_AUTH=user:pass when basic auth is on; ACE_TIMEOUT seconds to wait (default 600).
 set -eu
-id=$(curl -fsS -X POST "$1/api/scenarios/$2/run" | jq -r .run.id)
+auth=${ACE_AUTH:+-u $ACE_AUTH}
+started=$(curl -sS $auth -X POST "$1/api/scenarios/$2/run")
+id=$(echo "$started" | jq -r '.run.id // empty' 2>/dev/null || true)
+[ -n "$id" ] || { echo "start failed: $started" >&2; exit 2; }
+deadline=$(( $(date +%s) + ${ACE_TIMEOUT:-600} ))
 while :; do
-  body=$(curl -fsS "$1/api/runs/$id")
+  body=$(curl -fsS $auth "$1/api/runs/$id")
   passed=$(echo "$body" | jq -r .passed)
   [ "$passed" != null ] && break
+  [ "$(date +%s)" -lt "$deadline" ] || { echo "run $id still running" >&2; exit 3; }
   sleep 2
 done
-echo "$body" | jq -r '.run.calls[] | "\(.label): \(.result) \(.reason)"'
+echo "$body" | jq -r '.run.calls[]? | "\(.label): \(.result) \(.reason // "")"'
 [ "$passed" = true ]
 ```
 

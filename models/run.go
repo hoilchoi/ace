@@ -163,16 +163,26 @@ func (r *Run) Dir(runsRoot string) string {
 	return filepath.Join(runsRoot, r.ID)
 }
 
-// Save serializes the run metadata to run.json in its dir.
+// Save serializes the run metadata to run.json in its dir. It writes a
+// temp file and renames it, so a reader polling the run (the run page,
+// GET /api/runs/:id) never sees a truncated file.
 func (r *Run) Save(runsRoot string) error {
-	f, err := os.Create(filepath.Join(r.Dir(runsRoot), "run.json"))
+	dir := r.Dir(runsRoot)
+	f, err := os.CreateTemp(dir, ".run.json.*.tmp")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer os.Remove(f.Name())
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	return enc.Encode(r)
+	if err := enc.Encode(r); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), filepath.Join(dir, "run.json"))
 }
 
 // LoadRun reads one run by ID.

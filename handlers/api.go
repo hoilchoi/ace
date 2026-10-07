@@ -20,9 +20,16 @@ type apiRun struct {
 }
 
 func (s *Server) handleAPIRun(c *gin.Context) {
-	run, status, err := s.startScenarioRun(c)
+	started, status, err := s.startScenarioRun(c)
 	if err != nil {
 		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	// The runner's goroutine keeps writing to the returned *Run; answer
+	// with the copy Start already saved instead.
+	run, err := models.LoadRun(s.Cfg.RunsDir, started.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.Header("Location", "/api/runs/"+run.ID)
