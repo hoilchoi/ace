@@ -179,6 +179,11 @@ func (r *Run) Save(runsRoot string) error {
 		f.Close()
 		return err
 	}
+	// CreateTemp makes the file 0600; keep run.json readable from the host.
+	if err := f.Chmod(0o644); err != nil {
+		f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}

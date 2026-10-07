@@ -2,6 +2,7 @@ package models
 
 import (
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -44,5 +45,24 @@ func TestLoadRunNeverSeesAPartialSave(t *testing.T) {
 	wg.Wait()
 	if failures > 0 {
 		t.Fatalf("%d of 5000 loads failed while the run was being saved", failures)
+	}
+}
+
+// Operators read runs from the host (bind-mounted runs/); the container writes as root.
+func TestSavedRunIsWorldReadable(t *testing.T) {
+	root := t.TempDir()
+	run := &Run{ID: "r1", Scenario: "probe", Status: "done"}
+	if err := os.MkdirAll(run.Dir(root), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := run.Save(root); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(filepath.Join(run.Dir(root), "run.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm()&0o044 != 0o044 {
+		t.Fatalf("run.json mode %v, want group/other readable like before", fi.Mode().Perm())
 	}
 }
