@@ -37,6 +37,32 @@ Open `http://localhost:8086/`.
 -runs-dir              per-run output dir (default ./runs)
 ```
 
+## API
+
+For scripts such as a post-deploy check. Same basic auth as the UI.
+
+| Request | Response |
+|---|---|
+| `POST /api/scenarios/<name>/run` | `202` `{"passed": null, "run": {...}}`, `Location: /api/runs/<id>`. Uses the scenario's saved ports. `409` if the ports are busy, `404` if the scenario doesn't exist. |
+| `GET /api/runs/<id>` | `200` `{"passed": true\|false\|null, "run": {...}}`. `passed` is `null` while running, then `true` only if the run finished (`done`) with at least one call and every call PASSed, after the scenario's verdict (`<name>.verdict.json`). `run.calls[].reason` says why a call failed. |
+
+Run a scenario and exit non-zero unless it passes:
+
+```sh
+#!/bin/sh
+# usage: ace-check.sh <ace-url> <scenario>   e.g. ace-check.sh http://ace:8086 probe
+set -eu
+id=$(curl -fsS -X POST "$1/api/scenarios/$2/run" | jq -r .run.id)
+while :; do
+  body=$(curl -fsS "$1/api/runs/$id")
+  passed=$(echo "$body" | jq -r .passed)
+  [ "$passed" != null ] && break
+  sleep 2
+done
+echo "$body" | jq -r '.run.calls[] | "\(.label): \(.result) \(.reason)"'
+[ "$passed" = true ]
+```
+
 ## Notes
 
 - One run at a time. The nav shows a "run in progress" badge.
