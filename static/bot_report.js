@@ -71,6 +71,7 @@
         data: timestamps.map((t) => (map.has(t) ? map.get(t) : null)),
         borderColor: color,
         backgroundColor: color + "55",
+        borderWidth: 1,
         fill: panelCfg.stacked,
         tension: 0.2,
         pointRadius: 0,
@@ -93,7 +94,23 @@
         scales: {
           x: {
             type: "time",
-            time: { tooltipFormat: "yyyy-MM-dd HH:mm" },
+            time: {
+              tooltipFormat: "yyyy-MM-dd HH:mm",
+              // Explicit displayFormats so the tick text carries the
+              // date component when the range spans multiple days.
+              // Chart.js default for the "hour" unit is just "ha"
+              // (e.g. "3PM"), which drops the date entirely — so a 7d
+              // or 30d range shows the same hour ticks repeating with
+              // no way to tell which day is which.
+              displayFormats: {
+                minute: "HH:mm",
+                hour:   "MMM d HH:mm",
+                day:    "MMM d",
+                week:   "MMM d",
+                month:  "MMM yyyy",
+              },
+            },
+            ticks: { maxRotation: 0, autoSkipPadding: 20 },
             grid: { display: false },
           },
           y: {
