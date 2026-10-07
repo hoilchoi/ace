@@ -40,6 +40,8 @@ func (s *Server) Register(r *gin.Engine) {
 	r.POST("/scenarios/:name", s.handleScenarioSave)
 	r.POST("/scenarios/:name/delete", s.handleScenarioDelete)
 	r.POST("/scenarios/:name/run", s.handleRun)
+	r.POST("/api/scenarios/:name/run", s.handleAPIRun)
+	r.GET("/api/runs/:id", s.handleAPIRunStatus)
 	r.POST("/runs/:id/stop", s.handleRunStop)
 	r.GET("/runs", s.handleRuns)
 	r.GET("/runs/:id", s.handleRunDetail)
@@ -222,16 +224,27 @@ func (s *Server) handleScenarioDetail(c *gin.Context) {
 }
 
 func (s *Server) handleRun(c *gin.Context) {
+	run, status, err := s.startScenarioRun(c)
+	if err != nil {
+		c.String(status, "%v", err)
+		return
+	}
+	c.Redirect(http.StatusSeeOther, "/runs/"+run.ID)
+}
+
+// startScenarioRun starts the scenario named in the route, shared by the
+// Run form and POST /api/scenarios/:name/run. On error it returns the
+// HTTP status to answer with.
+func (s *Server) startScenarioRun(c *gin.Context) (*models.Run, int, error) {
 	name := c.Param("name")
 	scn, err := models.LoadScenario(s.Cfg.ScenariosDir, name)
 	if err != nil {
-		c.String(http.StatusNotFound, "scenario %q: %v", name, err)
-		return
+		return nil, http.StatusNotFound, fmt.Errorf("scenario %q: %v", name, err)
 	}
 	// Start launches voip_patrol in a background goroutine and returns
-	// immediately with the run record (status=running). We redirect to
-	// the run detail page; the goroutine outlives this HTTP request, so
-	// navigating away or closing the tab doesn't kill voip_patrol.
+	// immediately with the run record (status=running). The goroutine
+	// outlives this HTTP request, so navigating away or closing the tab
+	// doesn't kill voip_patrol.
 	// Prefer the authenticated user from the basic-auth middleware; fall
 	// back to X-Forwarded-Email so the field stays populated if an
 	// oauth2-proxy is later put in front. Empty when auth is disabled —
@@ -247,8 +260,7 @@ func (s *Server) handleRun(c *gin.Context) {
 	// scenario's saved ports without needing the detail page.
 	ports, err := parsePorts(c)
 	if err != nil {
-		c.String(http.StatusBadRequest, "%v", err)
-		return
+		return nil, http.StatusBadRequest, err
 	}
 	if ports.SIP == 0 {
 		ports.SIP = scn.Ports.SIP
@@ -273,10 +285,9 @@ func (s *Server) handleRun(c *gin.Context) {
 	}
 	run, err := s.Runner.Start(scn, user, ports)
 	if err != nil {
-		c.String(http.StatusConflict, "run failed to start: %v", err)
-		return
+		return nil, http.StatusConflict, fmt.Errorf("run failed to start: %v", err)
 	}
-	c.Redirect(http.StatusSeeOther, "/runs/"+run.ID)
+	return run, 0, nil
 }
 
 func (s *Server) handleRuns(c *gin.Context) {

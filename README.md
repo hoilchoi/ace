@@ -37,6 +37,38 @@ Open `http://localhost:8086/`.
 -runs-dir              per-run output dir (default ./runs)
 ```
 
+## API
+
+For scripts such as a post-deploy check. Same basic auth as the UI.
+
+| Request | Response |
+|---|---|
+| `POST /api/scenarios/<name>/run` | `202` `{"passed": null, "run": {...}}`, `Location: /api/runs/<id>`. Uses the scenario's saved ports. `409` if the ports are busy, `404` if the scenario doesn't exist. |
+| `GET /api/runs/<id>` | `200` `{"passed": true\|false\|null, "run": {...}}`. `passed` is `null` while running, then `true` only if the run finished (`done`) with at least one call and every call PASSed, after the scenario's verdict (`<name>.verdict.json`). `run.calls[].reason` says why a call failed. |
+
+Run a scenario and exit non-zero unless it passes:
+
+```sh
+#!/bin/sh
+# usage: ace-check.sh <ace-url> <scenario>   e.g. ace-check.sh http://ace:8086 probe
+# ACE_AUTH=user:pass when basic auth is on; ACE_TIMEOUT seconds to wait (default 600).
+set -eu
+api() { if [ -n "${ACE_AUTH:-}" ]; then curl -u "$ACE_AUTH" "$@"; else curl "$@"; fi; }
+started=$(api -sS -X POST "$1/api/scenarios/$2/run")
+id=$(printf '%s\n' "$started" | jq -r '.run.id // empty' 2>/dev/null || true)
+[ -n "$id" ] || { echo "start failed: $started" >&2; exit 2; }
+deadline=$(( $(date +%s) + ${ACE_TIMEOUT:-600} ))
+while :; do
+  body=$(api -fsS "$1/api/runs/$id")
+  passed=$(printf '%s\n' "$body" | jq -r .passed)
+  [ "$passed" != null ] && break
+  [ "$(date +%s)" -lt "$deadline" ] || { echo "run $id still running" >&2; exit 3; }
+  sleep 2
+done
+printf '%s\n' "$body" | jq -r '.run.calls[]? | "\(.label): \(.result) \(.reason // "")"'
+[ "$passed" = true ]
+```
+
 ## Notes
 
 - One run at a time. The nav shows a "run in progress" badge.
